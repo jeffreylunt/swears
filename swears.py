@@ -5,6 +5,7 @@ import subprocess
 import whisper
 import json
 import string
+import tempfile
 
 # Constants
 TARGET_WORDS = [
@@ -22,16 +23,16 @@ TARGET_WORDS = [
 ]
 
 # Functions
-def extract_audio(video_file, audio_file):
-    """Extract audio from the video file."""
-    if not os.path.exists(audio_file):
-        print("Extracting audio from video...")
-        subprocess.run([
-            "ffmpeg", "-i", video_file, "-c:a", "aac", "-strict", "-2", "-q:a", "1",
-            "-map", "a", audio_file
-        ])
-    else:
-        print("Audio already extracted. Skipping.")
+def extract_audio(video_file):
+    """Extract audio from the video file and return the temporary audio file path."""
+    temp_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+    temp_audio.close()
+    print("Extracting audio from video...")
+    subprocess.run([
+        "ffmpeg", "-y", "-i", video_file, "-c:a", "aac", "-strict", "-2", "-q:a", "1",
+        "-map", "a", temp_audio.name
+    ])
+    return temp_audio.name
 
 def transcribe_audio(audio_file, transcription_file, model):
     """Transcribe the audio and save the transcription."""
@@ -56,7 +57,7 @@ def generate_filter(transcription_file, buffer=0.1):
     for segment in transcription.get("segments", []):
         for word in segment.get("words", []):
             if any(pattern.search(word["word"]) for pattern in regex_patterns):
-                start = max(0, word["start"] - buffer)  # Ensure start time doesn't go below 0
+                start = max(0, word["start"] - buffer)
                 if(word["word"].rstrip(string.punctuation).endswith("ed")):
                     buffer = 0.3
                 end = word["end"] + buffer
@@ -70,14 +71,17 @@ def generate_filter(transcription_file, buffer=0.1):
     print(f"Generated FFmpeg filter string: {filter_string}")
     return filter_string
 
-def mute_audio(audio_file, filter_string, output_audio):
-    """Apply muting to the audio file."""
+def mute_audio(audio_file, filter_string):
+    """Apply muting to the audio file and return the path of the muted audio."""
+    temp_muted_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+    temp_muted_audio.close()
     print("Applying mute sections...")
     subprocess.run([
         "ffmpeg", "-y", "-i", audio_file, "-af", filter_string, "-c:a", "aac", "-strict", "-2",
-        output_audio
+        temp_muted_audio.name
     ])
-    print(f"Muted audio saved to '{output_audio}'")
+    print(f"Muted audio temporarily saved to '{temp_muted_audio.name}'")
+    return temp_muted_audio.name
 
 def check_clean_audio(video_file):
     """Check if the video file has an audio track with title 'Clean'."""
@@ -157,16 +161,14 @@ def main():
 
     base_name = os.path.splitext(os.path.basename(video_file))[0]
     output_dir = os.path.dirname(video_file)
-    extracted_audio = os.path.join(output_dir, f"{base_name}_extracted_audio.m4a")
     transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
-    clean_audio = os.path.join(output_dir, f"{base_name}_clean_audio.m4a")
 
     # Load Whisper model
     print("Loading Whisper model...")
     model = whisper.load_model("base")
 
     # Step 1: Extract audio
-    extract_audio(video_file, extracted_audio)
+    extracted_audio = extract_audio(video_file)
 
     # Step 2: Transcribe audio
     transcribe_audio(extracted_audio, transcription_file, model)
@@ -175,13 +177,16 @@ def main():
     filter_string = generate_filter(transcription_file)
     if not filter_string:
         print("No sections to mute. Exiting.")
+        os.unlink(extracted_audio)
         return
 
     # Step 4: Mute the audio
-    mute_audio(extracted_audio, filter_string, clean_audio)
+    muted_audio = mute_audio(extracted_audio, filter_string)
+    os.unlink(extracted_audio)  # Clean up extracted audio
 
     # Step 5: Add muted audio back to the video
-    add_audio_to_video(video_file, clean_audio)
+    add_audio_to_video(video_file, muted_audio)
+    os.unlink(muted_audio)  # Clean up muted audio
 
 if __name__ == "__main__":
     main()
