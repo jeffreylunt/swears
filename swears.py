@@ -17,8 +17,10 @@ TARGET_WORDS = [
     "dick",
     "goddamn", "goddammit",
     "motherfucker",
-    "jesus"
+    "jesus",
+    "cunt"
 ]
+
 # Functions
 def extract_audio(video_file, audio_file):
     """Extract audio from the video file."""
@@ -77,22 +79,70 @@ def mute_audio(audio_file, filter_string, output_audio):
     ])
     print(f"Muted audio saved to '{output_audio}'")
 
-def add_audio_to_video(video_file, clean_audio_file, output_video_file):
+def check_clean_audio(video_file):
+    """Check if the video file has an audio track with title 'Clean'."""
+    result = subprocess.run([
+        "ffprobe", "-i", video_file, "-show_streams", "-select_streams", "a",
+        "-show_entries", "stream=title", "-of", "json"
+    ], capture_output=True, text=True)
+    audio_tracks = json.loads(result.stdout).get("streams", [])
+    for track in audio_tracks:
+        if track.get("tags", {}).get("title") == "Clean":
+            return True
+    return False
+
+def remove_clean_audio(video_file):
+    """Remove audio tracks with the title 'Clean'."""
+    temp_file = video_file + ".temp" + os.path.splitext(video_file)[1]  # Use same extension as source
+    print("Removing existing 'Clean' audio track...")
+    
+    # Identify all streams except 'Clean' audio tracks
+    streams = subprocess.run(
+        ["ffprobe", "-i", video_file, "-show_streams", "-select_streams", "a", 
+         "-show_entries", "stream=index:stream_tags=title", "-of", "csv=p=0"],
+        capture_output=True, text=True
+    ).stdout.strip().split("\n")
+    
+    # Collect stream indexes to remove
+    clean_track_indexes = [
+        line.split(",")[0] for line in streams if "Clean" in line
+    ]
+    
+    # Generate the `-map` commands to exclude 'Clean' tracks
+    map_options = ["-map", "0"]
+    for index in clean_track_indexes:
+        map_options += ["-map", f"-0:{index}"]
+    
+    # Run ffmpeg to remove the 'Clean' tracks
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", video_file, *map_options, "-c", "copy", temp_file]
+    )
+    os.replace(temp_file, video_file)
+    print("Existing 'Clean' audio track removed.")
+
+def add_audio_to_video(video_file, clean_audio_file):
     """Add the cleaned audio track back to the original video."""
+    if check_clean_audio(video_file):
+        remove_clean_audio(video_file)
+
+    temp_file = video_file + ".temp" + os.path.splitext(video_file)[1]  # Use same extension as source
     print("Adding clean audio back to the video...")
     subprocess.run([
-        "ffmpeg", "-y", "-i", video_file, "-i", clean_audio_file, "-map", "0:v", "-map", "0:a",
-        "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-strict", "-2",
+        "ffmpeg", "-y", "-i", video_file, "-i", clean_audio_file,
+        "-map", "0",  # Include all original streams
+        "-map", "1:a",  # Add clean audio as a new track
+        "-c:v", "copy", "-c:a", "aac", "-strict", "-2",
         "-metadata:s:a:1", "language=eng", "-metadata:s:a:1", "title=Clean",
-        "-shortest", output_video_file
+        "-shortest", temp_file
     ])
-    print(f"Clean video saved")
-    subprocess.run(["mv", output_video_file, video_file])
+    os.replace(temp_file, video_file)
+    print(f"Clean audio track added to '{video_file}'.")
 
 # Main Functionality
 def main():
     parser = argparse.ArgumentParser(description="Process a video file to mute specific words.")
     parser.add_argument("video_file", help="Path to the input video file")
+    parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
     args = parser.parse_args()
 
     video_file = args.video_file
@@ -100,12 +150,16 @@ def main():
         print(f"Error: File '{video_file}' not found.")
         return
 
+    if check_clean_audio(video_file):
+        if not args.force:
+            print("'Clean' audio track already exists. Use --force to replace it.")
+            return
+
     base_name = os.path.splitext(os.path.basename(video_file))[0]
     output_dir = os.path.dirname(video_file)
     extracted_audio = os.path.join(output_dir, f"{base_name}_extracted_audio.m4a")
     transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
     clean_audio = os.path.join(output_dir, f"{base_name}_clean_audio.m4a")
-    clean_video = os.path.join(output_dir, f"{base_name}_clean_video.mkv")
 
     # Load Whisper model
     print("Loading Whisper model...")
@@ -127,7 +181,7 @@ def main():
     mute_audio(extracted_audio, filter_string, clean_audio)
 
     # Step 5: Add muted audio back to the video
-    add_audio_to_video(video_file, clean_audio, clean_video)
+    add_audio_to_video(video_file, clean_audio)
 
 if __name__ == "__main__":
     main()
