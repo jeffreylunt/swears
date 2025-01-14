@@ -186,7 +186,7 @@ def main():
 
     # Step 5: Add muted audio back to the video
     add_audio_to_video(video_file, muted_audio)
-    os.unlink(muted_audio)  # Delete up muted audio
+    os.unlink(muted_audio)  # Delete muted audio
 
 if __name__ == "__main__":
     main()
