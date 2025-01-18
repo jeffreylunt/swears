@@ -9,9 +9,9 @@ import tempfile
 
 # Constants
 TARGET_WORDS = [
-    "fuck", 
-    "shit",
-    "bullshit",
+    "fuck", "fucking", "fucked",
+    "asshole",
+    "shit", "bullshit",
     "damn", "dammit", 
     "bitch",
     "bastard",
@@ -186,7 +186,7 @@ def main():
 
     # Step 5: Add muted audio back to the video
     add_audio_to_video(video_file, muted_audio)
-    os.unlink(muted_audio)  # Clean up muted audio
+    os.unlink(muted_audio)  # Delete muted audio
 
 if __name__ == "__main__":
     main()
