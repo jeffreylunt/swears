@@ -10,7 +10,7 @@ import tempfile
 # Constants
 TARGET_WORDS = [
     "fuck", "fucking", "fucked",
-    "asshole",
+    "asshole", "^ass$",
     "shit", "bullshit",
     "damn", "dammit", 
     "bitch",
