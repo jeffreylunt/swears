@@ -165,7 +165,7 @@ def main():
 
     # Load Whisper model
     print("Loading Whisper model...")
-    model = whisper.load_model("base")
+    model = whisper.load_model("base.en")
 
     # Step 1: Extract audio
     extracted_audio = extract_audio(video_file)
