@@ -23,7 +23,9 @@ This script processes video files to create a clean audio track by muting specif
 
 ### Basic Usage
 
-bash python swears.py <input_video_file>
+```bash
+python3.9 swears.py <input_video_file>
+```
 
 This will:
 1. Extract audio from the video

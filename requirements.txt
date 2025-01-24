@@ -1,0 +1,4 @@
+openai-whisper>=20231117
+pytest>=7.4.0
+numpy>=1.24.3
+torch>=2.0.1
