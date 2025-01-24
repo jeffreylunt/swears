@@ -92,19 +92,11 @@ def check_clean_audio(video_file):
         "ffmpeg", "-i", video_file, "-hide_banner"
     ], capture_output=True, text=True)
     
-    print("\nDEBUG: Full ffmpeg output:")
-    print(result.stderr)
-    
     # Look for any of our identifying metadata in audio streams
     audio_streams = result.stderr.split("Stream #")
-    print("\nDEBUG: Found", len(audio_streams), "streams")
     
     for i, stream in enumerate(audio_streams):
-        print(f"\nDEBUG: Analyzing stream {i}:")
-        print(stream)
-        
         if "Audio" in stream:
-            print("DEBUG: This is an audio stream")
             identifiers = [
                 r"handler_name\s*:\s*CleanAudio",
                 r"comment\s*:\s*Clean audio track",
@@ -112,12 +104,8 @@ def check_clean_audio(video_file):
             ]
             for identifier in identifiers:
                 if re.search(identifier, stream):
-                    print(f"DEBUG: Found identifier: {identifier}")
                     return True
-                else:
-                    print(f"DEBUG: Did not find identifier: {identifier}")
     
-    print("\nDEBUG: No clean audio track found")
     return False
 
 def remove_clean_audio(video_file):
@@ -174,16 +162,7 @@ def add_audio_to_video(video_file, clean_audio_file, output_file=None):
         "-shortest", 
         temp_file
     ]
-    
-    print("FFmpeg command:")
-    print(" ".join(cmd))
-    
     result = subprocess.run(cmd, capture_output=True, text=True)
-    print("FFmpeg output:")
-    print(result.stdout)
-    print("FFmpeg error output:")
-    print(result.stderr)
-    
     os.replace(temp_file, output_file)
     print(f"Clean audio track added to '{output_file}'.")
 
