@@ -8,7 +8,7 @@ import string
 import tempfile
 
 # Constants
-TARGET_WORDS = [
+DEFAULT_TARGET_WORDS = [
     "fuck", "fucking", "fucked",
     "asshole", "^ass$",
     "shit", "bullshit",
@@ -34,9 +34,11 @@ def extract_audio(video_file):
     ])
     return temp_audio.name
 
-def transcribe_audio(audio_file, transcription_file, model):
+def transcribe_audio(audio_file, transcription_file):
     """Transcribe the audio and save the transcription."""
     if not os.path.exists(transcription_file):
+        print("Loading Whisper model...")
+        model = whisper.load_model("base.en")
         print("Transcribing audio...")
         result = model.transcribe(audio_file, word_timestamps=True, verbose=True)
         with open(transcription_file, "w") as f:
@@ -45,13 +47,14 @@ def transcribe_audio(audio_file, transcription_file, model):
     else:
         print("Transcription already exists. Skipping.")
 
-def generate_filter(transcription_file, buffer=0.1):
+def generate_filter(transcription_file, buffer=0.1, target_words=None):
     """Generate FFmpeg filter string to mute specific sections."""
     print("Generating mute sections from transcription...")
     with open(transcription_file, "r") as f:
         transcription = json.load(f)
 
-    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in TARGET_WORDS]
+    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
+    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in words_to_target]
     filter_parts = []
 
     for segment in transcription.get("segments", []):
@@ -86,13 +89,35 @@ def mute_audio(audio_file, filter_string):
 def check_clean_audio(video_file):
     """Check if the video file has an audio track with title 'Clean'."""
     result = subprocess.run([
-        "ffprobe", "-i", video_file, "-show_streams", "-select_streams", "a",
-        "-show_entries", "stream=title", "-of", "json"
+        "ffmpeg", "-i", video_file, "-hide_banner"
     ], capture_output=True, text=True)
-    audio_tracks = json.loads(result.stdout).get("streams", [])
-    for track in audio_tracks:
-        if track.get("tags", {}).get("title") == "Clean":
-            return True
+    
+    print("\nDEBUG: Full ffmpeg output:")
+    print(result.stderr)
+    
+    # Look for any of our identifying metadata in audio streams
+    audio_streams = result.stderr.split("Stream #")
+    print("\nDEBUG: Found", len(audio_streams), "streams")
+    
+    for i, stream in enumerate(audio_streams):
+        print(f"\nDEBUG: Analyzing stream {i}:")
+        print(stream)
+        
+        if "Audio" in stream:
+            print("DEBUG: This is an audio stream")
+            identifiers = [
+                r"handler_name\s*:\s*CleanAudio",
+                r"comment\s*:\s*Clean audio track",
+                r"title\s*:\s*Clean"
+            ]
+            for identifier in identifiers:
+                if re.search(identifier, stream):
+                    print(f"DEBUG: Found identifier: {identifier}")
+                    return True
+                else:
+                    print(f"DEBUG: Did not find identifier: {identifier}")
+    
+    print("\nDEBUG: No clean audio track found")
     return False
 
 def remove_clean_audio(video_file):
@@ -124,23 +149,43 @@ def remove_clean_audio(video_file):
     os.replace(temp_file, video_file)
     print("Existing 'Clean' audio track removed.")
 
-def add_audio_to_video(video_file, clean_audio_file):
+def add_audio_to_video(video_file, clean_audio_file, output_file=None):
     """Add the cleaned audio track back to the original video."""
-    if check_clean_audio(video_file):
+    output_file = output_file or video_file
+    temp_file = output_file + ".temp" + os.path.splitext(output_file)[1]
+
+    if output_file == video_file and check_clean_audio(video_file):
         remove_clean_audio(video_file)
 
-    temp_file = video_file + ".temp" + os.path.splitext(video_file)[1]  # Use same extension as source
     print("Adding clean audio back to the video...")
-    subprocess.run([
-        "ffmpeg", "-y", "-i", video_file, "-i", clean_audio_file,
+    cmd = [
+        "ffmpeg", "-y", 
+        "-i", video_file, 
+        "-i", clean_audio_file,
         "-map", "0",  # Include all original streams
         "-map", "1:a",  # Add clean audio as a new track
-        "-c:v", "copy", "-c:a", "aac", "-strict", "-2",
-        "-metadata:s:a:1", "language=eng", "-metadata:s:a:1", "title=Clean",
-        "-shortest", temp_file
-    ])
-    os.replace(temp_file, video_file)
-    print(f"Clean audio track added to '{video_file}'.")
+        "-c:v", "copy", 
+        "-c:a", "aac", 
+        "-strict", "-2",
+        "-metadata:s:a:1", "title=Clean",
+        "-metadata:s:a:1", "language=eng",
+        "-metadata:s:a:1", "handler_name=CleanAudio",  # Add handler name
+        "-metadata:s:a:1", "comment=Clean audio track",  # Add comment
+        "-shortest", 
+        temp_file
+    ]
+    
+    print("FFmpeg command:")
+    print(" ".join(cmd))
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    print("FFmpeg output:")
+    print(result.stdout)
+    print("FFmpeg error output:")
+    print(result.stderr)
+    
+    os.replace(temp_file, output_file)
+    print(f"Clean audio track added to '{output_file}'.")
 
 # Main Functionality
 def main():
@@ -163,15 +208,11 @@ def main():
     output_dir = os.path.dirname(video_file)
     transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
 
-    # Load Whisper model
-    print("Loading Whisper model...")
-    model = whisper.load_model("base.en")
-
     # Step 1: Extract audio
     extracted_audio = extract_audio(video_file)
 
     # Step 2: Transcribe audio
-    transcribe_audio(extracted_audio, transcription_file, model)
+    transcribe_audio(extracted_audio, transcription_file)
 
     # Step 3: Generate mute sections
     filter_string = generate_filter(transcription_file)
