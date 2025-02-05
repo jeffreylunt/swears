@@ -109,16 +109,16 @@ def mute_audio(audio_file, filter_string):
     if audio_info.get("streams") and len(audio_info["streams"]) > 0:
         channels = int(audio_info["streams"][0].get("channels", 2))
     
-    temp_muted_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+    temp_muted_audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     temp_muted_audio.close()
     print(f"Applying mute sections to {channels}-channel audio...")
     
     subprocess.run([
         "ffmpeg", "-y", "-i", audio_file,
         "-af", filter_string,
-        "-c:a", "aac",
-        "-ac", str(channels),  # Preserve original channel count
-        "-strict", "-2",
+        "-acodec", "pcm_s16le",
+        "-ar", "44100",
+        "-ac", str(channels),
         temp_muted_audio.name
     ])
     print(f"Muted audio temporarily saved to '{temp_muted_audio.name}'")
