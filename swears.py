@@ -395,10 +395,15 @@ def main():
             # Save cleaned subtitles to a new file instead of embedding back into video
             base_name = os.path.splitext(video_file)[0]
             output_srt = f"{base_name}.Clean.en.srt"
-            os.replace(clean_subtitle_file, output_srt)
+            
+            # Copy the file contents instead of trying to move across devices
+            with open(clean_subtitle_file, 'rb') as src, open(output_srt, 'wb') as dst:
+                dst.write(src.read())
+            
             print(f"Clean subtitles saved to '{output_srt}'")
             
             os.unlink(subtitle_file)
+            os.unlink(clean_subtitle_file)
         else:
             print("No subtitle track found to process.")
 
