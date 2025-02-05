@@ -391,9 +391,14 @@ def main():
         if subtitle_file:
             print("Found subtitle track, creating clean version...")
             clean_subtitle_file = clean_subtitles(subtitle_file)
-            add_clean_subtitles(video_file, clean_subtitle_file)
+            
+            # Save cleaned subtitles to a new file instead of embedding back into video
+            base_name = os.path.splitext(video_file)[0]
+            output_srt = f"{base_name}.Clean.en.srt"
+            os.replace(clean_subtitle_file, output_srt)
+            print(f"Clean subtitles saved to '{output_srt}'")
+            
             os.unlink(subtitle_file)
-            os.unlink(clean_subtitle_file)
         else:
             print("No subtitle track found to process.")
 
