@@ -346,6 +346,8 @@ def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
         "-c:s", "mov_text",  # Convert subtitles to MOV format
         "-metadata:s:s:" + str(subtitle_count), "title=Clean",  # Add metadata to new subtitle track
         "-metadata:s:s:" + str(subtitle_count), "language=eng",
+        "-metadata:s:s:" + str(subtitle_count), "handler_name=CleanSubtitles",
+        "-metadata:s:s:" + str(subtitle_count), "comment=Clean subtitle track",
         temp_file
     ]
     
