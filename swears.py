@@ -25,12 +25,31 @@ DEFAULT_TARGET_WORDS = [
 # Functions
 def extract_audio(video_file):
     """Extract audio from the video file and return the temporary audio file path."""
-    temp_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+    # First, probe the input file to get audio channel information
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-select_streams", "a:0",
+        video_file
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+    audio_info = json.loads(probe_result.stdout)
+    
+    # Get number of channels from first audio stream, default to 2 if not found
+    channels = 2
+    if audio_info.get("streams") and len(audio_info["streams"]) > 0:
+        channels = int(audio_info["streams"][0].get("channels", 2))
+    
+    temp_audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     temp_audio.close()
-    print("Extracting audio from video...")
+    print(f"Extracting {channels}-channel audio from video...")
+    
     subprocess.run([
-        "ffmpeg", "-y", "-i", video_file, "-c:a", "aac", "-strict", "-2", "-q:a", "1",
-        "-map", "a", temp_audio.name
+        "ffmpeg", "-y", "-i", video_file,
+        "-vn",  # No video
+        "-acodec", "pcm_s16le",  # Use PCM format (WAV)
+        "-ar", "44100",  # Standard sample rate
+        "-ac", str(channels),  # Preserve original channel count
+        temp_audio.name
     ])
     return temp_audio.name
 
@@ -76,11 +95,30 @@ def generate_filter(transcription_file, buffer=0.1, target_words=None):
 
 def mute_audio(audio_file, filter_string):
     """Apply muting to the audio file and return the path of the muted audio."""
+    # First, probe the input file to get audio channel information
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-select_streams", "a:0",
+        audio_file
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+    audio_info = json.loads(probe_result.stdout)
+    
+    # Get number of channels from first audio stream, default to 2 if not found
+    channels = 2
+    if audio_info.get("streams") and len(audio_info["streams"]) > 0:
+        channels = int(audio_info["streams"][0].get("channels", 2))
+    
     temp_muted_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
     temp_muted_audio.close()
-    print("Applying mute sections...")
+    print(f"Applying mute sections to {channels}-channel audio...")
+    
     subprocess.run([
-        "ffmpeg", "-y", "-i", audio_file, "-af", filter_string, "-c:a", "aac", "-strict", "-2",
+        "ffmpeg", "-y", "-i", audio_file,
+        "-af", filter_string,
+        "-c:a", "aac",
+        "-ac", str(channels),  # Preserve original channel count
+        "-strict", "-2",
         temp_muted_audio.name
     ])
     print(f"Muted audio temporarily saved to '{temp_muted_audio.name}'")
@@ -145,6 +183,20 @@ def add_audio_to_video(video_file, clean_audio_file, output_file=None):
     if output_file == video_file and check_clean_audio(video_file):
         remove_clean_audio(video_file)
 
+    # Get number of channels from original video
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-select_streams", "a:0",
+        video_file
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+    audio_info = json.loads(probe_result.stdout)
+    
+    # Get number of channels, default to 2 if not found
+    channels = 2
+    if audio_info.get("streams") and len(audio_info["streams"]) > 0:
+        channels = int(audio_info["streams"][0].get("channels", 2))
+
     print("Adding clean audio back to the video...")
     cmd = [
         "ffmpeg", "-y", 
@@ -153,12 +205,13 @@ def add_audio_to_video(video_file, clean_audio_file, output_file=None):
         "-map", "0",  # Include all original streams
         "-map", "1:a",  # Add clean audio as a new track
         "-c:v", "copy", 
-        "-c:a", "aac", 
-        "-strict", "-2",
+        "-c:a", "pcm_s16le",  # Use WAV format (PCM)
+        "-ar", "44100",  # Standard sample rate
+        "-ac", str(channels),  # Use original channel count
         "-metadata:s:a:1", "title=Clean",
         "-metadata:s:a:1", "language=eng",
-        "-metadata:s:a:1", "handler_name=CleanAudio",  # Add handler name
-        "-metadata:s:a:1", "comment=Clean audio track",  # Add comment
+        "-metadata:s:a:1", "handler_name=CleanAudio",
+        "-metadata:s:a:1", "comment=Clean audio track",
         "-shortest", 
         temp_file
     ]
