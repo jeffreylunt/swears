@@ -274,6 +274,50 @@ def clean_subtitles(subtitle_file):
     
     return temp_clean_subs.name
 
+def check_clean_subtitles(video_file):
+    """Check if the video file has a subtitle track with title 'Clean'."""
+    result = subprocess.run([
+        "ffprobe", "-i", video_file, "-hide_banner"
+    ], capture_output=True, text=True)
+    
+    # Look for subtitle streams with Clean title
+    subtitle_streams = result.stderr.split("Stream #")
+    
+    for stream in subtitle_streams:
+        if "Subtitle" in stream and "title: Clean" in stream.lower():
+            return True
+    
+    return False
+
+def remove_clean_subtitles(video_file):
+    """Remove subtitle tracks with the title 'Clean'."""
+    temp_file = video_file + ".temp" + os.path.splitext(video_file)[1]
+    print("Removing existing 'Clean' subtitle track...")
+    
+    # Identify all streams except 'Clean' subtitle tracks
+    streams = subprocess.run(
+        ["ffprobe", "-i", video_file, "-show_streams", "-select_streams", "s", 
+         "-show_entries", "stream=index:stream_tags=title", "-of", "csv=p=0"],
+        capture_output=True, text=True
+    ).stdout.strip().split("\n")
+    
+    # Collect stream indexes to remove
+    clean_track_indexes = [
+        line.split(",")[0] for line in streams if "Clean" in line
+    ]
+    
+    # Generate the `-map` commands to exclude 'Clean' tracks
+    map_options = ["-map", "0"]
+    for index in clean_track_indexes:
+        map_options += ["-map", f"-0:{index}"]
+    
+    # Run ffmpeg to remove the 'Clean' tracks
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", video_file, *map_options, "-c", "copy", temp_file]
+    )
+    os.replace(temp_file, video_file)
+    print("Existing 'Clean' subtitle track removed.")
+
 def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
     """Add cleaned subtitles as a new track to the video."""
     if not clean_subtitle_file:
@@ -281,6 +325,16 @@ def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
         
     output_file = output_file or video_file
     temp_file = output_file + ".temp" + os.path.splitext(output_file)[1]
+    
+    if check_clean_subtitles(video_file):
+        remove_clean_subtitles(video_file)
+    
+    # Get current subtitle track count
+    subtitle_count = len(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "s", 
+         "-show_entries", "stream=index", "-of", "csv=p=0", video_file],
+        capture_output=True, text=True
+    ).stdout.strip().split('\n'))
     
     cmd = [
         "ffmpeg", "-y",
@@ -290,11 +344,8 @@ def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
         "-map", "1:0",  # Add new subtitle track
         "-c", "copy",  # Copy all streams
         "-c:s", "mov_text",  # Convert subtitles to MOV format
-        "-metadata:s:s:" + str(len(subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "s", 
-             "-show_entries", "stream=index", "-of", "csv=p=0", video_file],
-            capture_output=True, text=True
-        ).stdout.strip().split('\n'))), "title=Clean",  # Add metadata to new subtitle track
+        "-metadata:s:s:" + str(subtitle_count), "title=Clean",  # Add metadata to new subtitle track
+        "-metadata:s:s:" + str(subtitle_count), "language=eng",
         temp_file
     ]
     
@@ -308,6 +359,7 @@ def main():
     parser.add_argument("video_file", help="Path to the input video file")
     parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
+    parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     args = parser.parse_args()
 
     video_file = args.video_file
@@ -315,44 +367,7 @@ def main():
         print(f"Error: File '{video_file}' not found.")
         return
 
-    if check_clean_audio(video_file):
-        if not args.force:
-            print("'Clean' audio track already exists. Use --force to replace it.")
-            return
-
-    base_name = os.path.splitext(os.path.basename(video_file))[0]
-    output_dir = os.path.dirname(video_file)
-    transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
-
-    # Step 1: Extract audio
-    extracted_audio = extract_audio(video_file)
-
-    # Step 2: Transcribe audio
-    transcribe_audio(extracted_audio, transcription_file)
-
-    # Step 3: Generate mute sections
-    filter_string = generate_filter(transcription_file)
-    if not filter_string:
-        print("No sections to mute. Exiting.")
-        os.unlink(extracted_audio)
-        return
-    
-    # Save filter string if flag is set
-    if args.save_filter:
-        filter_file = os.path.join(output_dir, f"{base_name}_filter-string.txt")
-        with open(filter_file, 'w') as f:
-            f.write(filter_string)
-        print(f"FFmpeg filter string saved to '{filter_file}'")
-
-    # Step 4: Mute the audio
-    muted_audio = mute_audio(extracted_audio, filter_string)
-    os.unlink(extracted_audio)  # Clean up extracted audio
-
-    # Step 5: Add muted audio back to the video
-    add_audio_to_video(video_file, muted_audio)
-    os.unlink(muted_audio)  # Delete muted audio
-
-    # Step 6: Process subtitles
+    # Process subtitles first
     subtitle_file = extract_subtitles(video_file)
     if subtitle_file:
         print("Found subtitle track, creating clean version...")
@@ -362,6 +377,41 @@ def main():
         os.unlink(clean_subtitle_file)
     else:
         print("No subtitle track found to process.")
+
+    if args.subtitles_only:
+        return
+
+    # Continue with audio processing
+    if check_clean_audio(video_file):
+        if not args.force:
+            print("'Clean' audio track already exists. Use --force to replace it.")
+            return
+
+    base_name = os.path.splitext(os.path.basename(video_file))[0]
+    output_dir = os.path.dirname(video_file)
+    transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
+
+    # Rest of audio processing steps
+    extracted_audio = extract_audio(video_file)
+    transcribe_audio(extracted_audio, transcription_file)
+    
+    filter_string = generate_filter(transcription_file)
+    if not filter_string:
+        print("No sections to mute. Exiting.")
+        os.unlink(extracted_audio)
+        return
+    
+    if args.save_filter:
+        filter_file = os.path.join(output_dir, f"{base_name}_filter-string.txt")
+        with open(filter_file, 'w') as f:
+            f.write(filter_string)
+        print(f"FFmpeg filter string saved to '{filter_file}'")
+
+    muted_audio = mute_audio(extracted_audio, filter_string)
+    os.unlink(extracted_audio)
+
+    add_audio_to_video(video_file, muted_audio)
+    os.unlink(muted_audio)
 
 if __name__ == "__main__":
     main()
