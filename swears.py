@@ -224,6 +224,7 @@ def main():
     parser = argparse.ArgumentParser(description="Process a video file to mute specific words.")
     parser.add_argument("video_file", help="Path to the input video file")
     parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
+    parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
     args = parser.parse_args()
 
     video_file = args.video_file
@@ -252,6 +253,13 @@ def main():
         print("No sections to mute. Exiting.")
         os.unlink(extracted_audio)
         return
+    
+    # Save filter string if flag is set
+    if args.save_filter:
+        filter_file = os.path.join(output_dir, f"{base_name}_filter-string.txt")
+        with open(filter_file, 'w') as f:
+            f.write(filter_string)
+        print(f"FFmpeg filter string saved to '{filter_file}'")
 
     # Step 4: Mute the audio
     muted_audio = mute_audio(extracted_audio, filter_string)

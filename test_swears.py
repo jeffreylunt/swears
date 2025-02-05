@@ -88,6 +88,32 @@ def test_muted_sections(video_files):
     assert filter_string is not None, "No mute sections were generated"
     assert "volume=0" in filter_string, "No volume muting found in filter string"
 
+def test_save_filter_string(video_files):
+    """Test that filter string is correctly saved to a file"""
+    input_video, _ = video_files
+    base_name = os.path.splitext(os.path.basename(input_video))[0]
+    filter_file = f"{base_name}_filter-string.txt"
+    
+    # Extract and transcribe
+    extracted_audio = extract_audio(input_video)
+    transcribe_audio(extracted_audio, EXPECTED_TRANSCRIPTION)
+    
+    # Generate filter string
+    filter_string = generate_filter(EXPECTED_TRANSCRIPTION, target_words=TEST_TARGET_WORDS)
+    
+    # Save filter string to file
+    with open(filter_file, 'w') as f:
+        f.write(filter_string)
+    
+    # Verify file exists and contains the filter string
+    assert os.path.exists(filter_file), f"Filter string file {filter_file} was not created"
+    with open(filter_file, 'r') as f:
+        saved_filter = f.read()
+    assert saved_filter == filter_string, "Saved filter string doesn't match generated filter string"
+    
+    # Clean up
+    os.remove(filter_file)
+
 @pytest.fixture(autouse=True)
 def cleanup():
     """Clean up generated files after tests"""
@@ -96,7 +122,8 @@ def cleanup():
         EXPECTED_TRANSCRIPTION,
         TEST_OUTPUT_VIDEO_MP4,
         TEST_OUTPUT_VIDEO_MKV,
-        *[f for f in os.listdir() if f.endswith(".m4a")]  # Clean up temp audio files
+        *[f for f in os.listdir() if f.endswith(".m4a")],  # Clean up temp audio files
+        *[f for f in os.listdir() if f.endswith("_filter-string.txt")]  # Clean up filter string files
     ]
     for file in files_to_clean:
         try:
