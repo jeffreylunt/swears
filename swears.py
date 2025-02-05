@@ -362,11 +362,19 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
     parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
+    parser.add_argument("--remove-clean-subtitles", action="store_true", help="Remove the clean subtitle track only")
     args = parser.parse_args()
 
     video_file = args.video_file
     if not os.path.exists(video_file):
         print(f"Error: File '{video_file}' not found.")
+        return
+
+    if args.remove_clean_subtitles:
+        if check_clean_subtitles(video_file):
+            remove_clean_subtitles(video_file)
+        else:
+            print("No clean subtitle track found.")
         return
 
     # Process subtitles first
