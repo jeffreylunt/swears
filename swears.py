@@ -297,33 +297,13 @@ def check_clean_subtitles(video_file):
     return False
 
 def remove_clean_subtitles(video_file):
-    """Remove subtitle tracks with the title 'Clean'."""
-    temp_file = video_file + ".temp" + os.path.splitext(video_file)[1]
-    print("Removing existing 'Clean' subtitle track...")
+    """Remove the clean subtitle file if it exists."""
+    base_name = os.path.splitext(video_file)[0]
+    clean_srt = f"{base_name}.Clean.en.srt"
     
-    # Identify all streams except 'Clean' subtitle tracks
-    streams = subprocess.run(
-        ["ffprobe", "-i", video_file, "-show_streams", "-select_streams", "s", 
-         "-show_entries", "stream=index:stream_tags=title", "-of", "csv=p=0"],
-        capture_output=True, text=True
-    ).stdout.strip().split("\n")
-    
-    # Collect stream indexes to remove
-    clean_track_indexes = [
-        line.split(",")[0] for line in streams if "Clean" in line
-    ]
-    
-    # Generate the `-map` commands to exclude 'Clean' tracks
-    map_options = ["-map", "0"]
-    for index in clean_track_indexes:
-        map_options += ["-map", f"-0:{index}"]
-    
-    # Run ffmpeg to remove the 'Clean' tracks
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", video_file, *map_options, "-c", "copy", temp_file]
-    )
-    os.replace(temp_file, video_file)
-    print("Existing 'Clean' subtitle track removed.")
+    if os.path.exists(clean_srt):
+        os.unlink(clean_srt)
+        print("Existing clean subtitle file removed.")
 
 def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
     """Add cleaned subtitles as a new track to the video."""
@@ -369,20 +349,12 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
     parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
-    parser.add_argument("--remove-clean-subtitles", action="store_true", help="Remove the clean subtitle track only")
     parser.add_argument("--add-clean-subtitles", action="store_true", help="Add a clean subtitle track")
     args = parser.parse_args()
 
     video_file = args.video_file
     if not os.path.exists(video_file):
         print(f"Error: File '{video_file}' not found.")
-        return
-
-    if args.remove_clean_subtitles:
-        if check_clean_subtitles(video_file):
-            remove_clean_subtitles(video_file)
-        else:
-            print("No clean subtitle track found.")
         return
 
     # Process subtitles if flag is set
