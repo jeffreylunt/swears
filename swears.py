@@ -277,15 +277,22 @@ def clean_subtitles(subtitle_file):
 def check_clean_subtitles(video_file):
     """Check if the video file has a subtitle track with title 'Clean'."""
     result = subprocess.run([
-        "ffprobe", "-i", video_file, "-hide_banner"
+        "ffmpeg", "-i", video_file, "-hide_banner"
     ], capture_output=True, text=True)
     
-    # Look for subtitle streams with Clean title
+    # Look for any of our identifying metadata in subtitle streams
     subtitle_streams = result.stderr.split("Stream #")
     
     for stream in subtitle_streams:
-        if "Subtitle" in stream and "title: Clean" in stream.lower():
-            return True
+        if "Subtitle" in stream:
+            identifiers = [
+                r"handler_name\s*:\s*CleanSubtitles",
+                r"comment\s*:\s*Clean subtitle track",
+                r"title\s*:\s*Clean"
+            ]
+            for identifier in identifiers:
+                if re.search(identifier, stream, re.IGNORECASE):
+                    return True
     
     return False
 
