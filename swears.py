@@ -370,6 +370,7 @@ def main():
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
     parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     parser.add_argument("--remove-clean-subtitles", action="store_true", help="Remove the clean subtitle track only")
+    parser.add_argument("--add-clean-subtitles", action="store_true", help="Add a clean subtitle track")
     args = parser.parse_args()
 
     video_file = args.video_file
@@ -384,19 +385,20 @@ def main():
             print("No clean subtitle track found.")
         return
 
-    # Process subtitles first
-    subtitle_file = extract_subtitles(video_file)
-    if subtitle_file:
-        print("Found subtitle track, creating clean version...")
-        clean_subtitle_file = clean_subtitles(subtitle_file)
-        add_clean_subtitles(video_file, clean_subtitle_file)
-        os.unlink(subtitle_file)
-        os.unlink(clean_subtitle_file)
-    else:
-        print("No subtitle track found to process.")
+    # Process subtitles if flag is set
+    if args.add_clean_subtitles:
+        subtitle_file = extract_subtitles(video_file)
+        if subtitle_file:
+            print("Found subtitle track, creating clean version...")
+            clean_subtitle_file = clean_subtitles(subtitle_file)
+            add_clean_subtitles(video_file, clean_subtitle_file)
+            os.unlink(subtitle_file)
+            os.unlink(clean_subtitle_file)
+        else:
+            print("No subtitle track found to process.")
 
-    if args.subtitles_only:
-        return
+        if args.subtitles_only:
+            return
 
     # Continue with audio processing
     if check_clean_audio(video_file):
