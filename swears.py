@@ -219,6 +219,89 @@ def add_audio_to_video(video_file, clean_audio_file, output_file=None):
     os.replace(temp_file, output_file)
     print(f"Clean audio track added to '{output_file}'.")
 
+def clean_subtitle_text(text, target_words=None):
+    """Replace target words in subtitle text with underscores."""
+    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
+    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in words_to_target]
+    
+    cleaned_text = text
+    for pattern in regex_patterns:
+        cleaned_text = pattern.sub(lambda m: '_' * len(m.group(0)), cleaned_text)
+    return cleaned_text
+
+def extract_subtitles(video_file):
+    """Extract subtitles from video file if they exist."""
+    temp_subs = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
+    temp_subs.close()
+    
+    # Try to extract English subtitles
+    result = subprocess.run([
+        "ffmpeg", "-y", "-i", video_file,
+        "-map", "0:s:m:language:eng",  # Try to get English subtitles
+        temp_subs.name
+    ], capture_output=True)
+    
+    if os.path.getsize(temp_subs.name) == 0:
+        # If no English subtitles found, try first subtitle track
+        subprocess.run([
+            "ffmpeg", "-y", "-i", video_file,
+            "-map", "0:s:0",  # Get first subtitle track
+            temp_subs.name
+        ])
+    
+    if os.path.getsize(temp_subs.name) == 0:
+        os.unlink(temp_subs.name)
+        return None
+        
+    return temp_subs.name
+
+def clean_subtitles(subtitle_file):
+    """Clean subtitle file and return path to cleaned version."""
+    if not subtitle_file:
+        return None
+        
+    temp_clean_subs = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
+    temp_clean_subs.close()
+    
+    with open(subtitle_file, 'r', encoding='utf-8-sig') as f:
+        content = f.read()
+    
+    # Clean the subtitle content
+    cleaned_content = clean_subtitle_text(content)
+    
+    with open(temp_clean_subs.name, 'w', encoding='utf-8') as f:
+        f.write(cleaned_content)
+    
+    return temp_clean_subs.name
+
+def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
+    """Add cleaned subtitles as a new track to the video."""
+    if not clean_subtitle_file:
+        return
+        
+    output_file = output_file or video_file
+    temp_file = output_file + ".temp" + os.path.splitext(output_file)[1]
+    
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_file,
+        "-i", clean_subtitle_file,
+        "-map", "0",  # Include all streams from original
+        "-map", "1:0",  # Add new subtitle track
+        "-c", "copy",  # Copy all streams
+        "-c:s", "mov_text",  # Convert subtitles to MOV format
+        "-metadata:s:s:" + str(len(subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "s", 
+             "-show_entries", "stream=index", "-of", "csv=p=0", video_file],
+            capture_output=True, text=True
+        ).stdout.strip().split('\n'))), "title=Clean",  # Add metadata to new subtitle track
+        temp_file
+    ]
+    
+    subprocess.run(cmd)
+    os.replace(temp_file, output_file)
+    print("Clean subtitle track added.")
+
 # Main Functionality
 def main():
     parser = argparse.ArgumentParser(description="Process a video file to mute specific words.")
@@ -268,6 +351,17 @@ def main():
     # Step 5: Add muted audio back to the video
     add_audio_to_video(video_file, muted_audio)
     os.unlink(muted_audio)  # Delete muted audio
+
+    # Step 6: Process subtitles
+    subtitle_file = extract_subtitles(video_file)
+    if subtitle_file:
+        print("Found subtitle track, creating clean version...")
+        clean_subtitle_file = clean_subtitles(subtitle_file)
+        add_clean_subtitles(video_file, clean_subtitle_file)
+        os.unlink(subtitle_file)
+        os.unlink(clean_subtitle_file)
+    else:
+        print("No subtitle track found to process.")
 
 if __name__ == "__main__":
     main()
