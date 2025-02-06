@@ -30,12 +30,14 @@ def process_video(video_path, args):
         cmd.append("--force")
     if args.save_filter:
         cmd.append("--save-filter")
-    if args.add_clean_subtitles:
-        cmd.append("--add-clean-subtitles")
+    if not args.add_clean_subtitles:
+        cmd.append("--no-clean-subtitles")
     if args.subtitles_only:
         cmd.append("--subtitles-only")
     if args.embed_audio:
         cmd.append("--embed-audio")
+    if args.skip_subtitle_check:
+        cmd.append("--skip-subtitle-check")
     
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -54,9 +56,10 @@ def main():
     parser.add_argument("directory", help="Directory to search for video files")
     parser.add_argument("--force", action="store_true", help="Force replace existing 'Clean' audio tracks")
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
-    parser.add_argument("--add-clean-subtitles", action="store_true", help="Add a clean subtitle track")
+    parser.add_argument("--add-clean-subtitles", action="store_true", default=True, help="Add a clean subtitle track (default: true)")
     parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     parser.add_argument("--embed-audio", action="store_true", help="Embed clean audio in video instead of saving as separate file")
+    parser.add_argument("--skip-subtitle-check", action="store_true", help="Skip checking subtitles for target words")
     parser.add_argument("--dry-run", action="store_true", help="Show which files would be processed without processing them")
     args = parser.parse_args()
 
