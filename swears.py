@@ -342,6 +342,17 @@ def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
     os.replace(temp_file, output_file)
     print("Clean subtitle track added.")
 
+def save_clean_audio(video_file, clean_audio_file):
+    """Save the cleaned audio as a separate WAV file next to the video."""
+    base_name = os.path.splitext(video_file)[0]
+    output_wav = f"{base_name}.Clean.wav"
+    
+    # Copy the clean audio to the output location
+    with open(clean_audio_file, 'rb') as src, open(output_wav, 'wb') as dst:
+        dst.write(src.read())
+    
+    print(f"Clean audio saved to '{output_wav}'")
+
 # Main Functionality
 def main():
     parser = argparse.ArgumentParser(description="Process a video file to mute specific words.")
@@ -350,6 +361,7 @@ def main():
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
     parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     parser.add_argument("--add-clean-subtitles", action="store_true", help="Add a clean subtitle track")
+    parser.add_argument("--embed-audio", action="store_true", help="Embed clean audio in video instead of saving as separate file")
     args = parser.parse_args()
 
     video_file = args.video_file
@@ -411,7 +423,10 @@ def main():
     muted_audio = mute_audio(extracted_audio, filter_string)
     os.unlink(extracted_audio)
 
-    add_audio_to_video(video_file, muted_audio)
+    if args.embed_audio:
+        add_audio_to_video(video_file, muted_audio)
+    else:
+        save_clean_audio(video_file, muted_audio)
     os.unlink(muted_audio)
 
 if __name__ == "__main__":

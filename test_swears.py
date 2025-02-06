@@ -9,7 +9,8 @@ from swears import (
     extract_audio,
     mute_audio,
     generate_filter,
-    add_audio_to_video
+    add_audio_to_video,
+    save_clean_audio
 )
 
 # Constants for test files
@@ -114,6 +115,30 @@ def test_save_filter_string(video_files):
     # Clean up
     os.remove(filter_file)
 
+def test_save_clean_audio(video_files):
+    """Test that clean audio is correctly saved as a separate file"""
+    input_video, _ = video_files
+    base_name = os.path.splitext(input_video)[0]
+    expected_clean_audio = f"{base_name}.Clean.wav"
+    
+    # Extract and transcribe
+    extracted_audio = extract_audio(input_video)
+    transcribe_audio(extracted_audio, EXPECTED_TRANSCRIPTION)
+    
+    # Generate filter string and create muted audio
+    filter_string = generate_filter(EXPECTED_TRANSCRIPTION, target_words=TEST_TARGET_WORDS)
+    muted_audio = mute_audio(extracted_audio, filter_string)
+    
+    # Save clean audio
+    save_clean_audio(input_video, muted_audio)
+    
+    # Verify clean audio file exists and is not empty
+    assert os.path.exists(expected_clean_audio), f"Clean audio file {expected_clean_audio} was not created"
+    assert os.path.getsize(expected_clean_audio) > 0, "Clean audio file is empty"
+    
+    # Clean up
+    os.remove(expected_clean_audio)
+
 @pytest.fixture(autouse=True)
 def cleanup():
     """Clean up generated files after tests"""
@@ -122,8 +147,9 @@ def cleanup():
         EXPECTED_TRANSCRIPTION,
         TEST_OUTPUT_VIDEO_MP4,
         TEST_OUTPUT_VIDEO_MKV,
-        *[f for f in os.listdir() if f.endswith(".m4a")],  # Clean up temp audio files
-        *[f for f in os.listdir() if f.endswith("_filter-string.txt")]  # Clean up filter string files
+        *[f for f in os.listdir() if f.endswith(".wav")],  # Added .wav cleanup
+        *[f for f in os.listdir() if f.endswith(".m4a")],
+        *[f for f in os.listdir() if f.endswith("_filter-string.txt")]
     ]
     for file in files_to_clean:
         try:
