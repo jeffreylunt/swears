@@ -359,10 +359,14 @@ def main():
     parser.add_argument("video_file", help="Path to the input video file")
     parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
-    parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     parser.add_argument("--add-clean-subtitles", action="store_true", help="Add a clean subtitle track")
+    parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     parser.add_argument("--embed-audio", action="store_true", help="Embed clean audio in video instead of saving as separate file")
     args = parser.parse_args()
+    
+    # Validate that --subtitles-only is only used with --add-clean-subtitles
+    if args.subtitles_only and not args.add_clean_subtitles:
+        parser.error("--subtitles-only can only be used with --add-clean-subtitles")
 
     video_file = args.video_file
     if not os.path.exists(video_file):
