@@ -119,7 +119,7 @@ def test_save_clean_audio(video_files):
     """Test that clean audio is correctly saved as a separate file"""
     input_video, _ = video_files
     base_name = os.path.splitext(input_video)[0]
-    expected_clean_audio = f"{base_name}.Clean.wav"
+    expected_clean_audio = f"{base_name}.Clean.m4a"
     
     # Extract and transcribe
     extracted_audio = extract_audio(input_video)
@@ -147,7 +147,6 @@ def cleanup():
         EXPECTED_TRANSCRIPTION,
         TEST_OUTPUT_VIDEO_MP4,
         TEST_OUTPUT_VIDEO_MKV,
-        *[f for f in os.listdir() if f.endswith(".wav")],  # Added .wav cleanup
         *[f for f in os.listdir() if f.endswith(".m4a")],
         *[f for f in os.listdir() if f.endswith("_filter-string.txt")]
     ]

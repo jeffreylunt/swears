@@ -18,7 +18,7 @@ DEFAULT_TARGET_WORDS = [
     "dick",
     "goddamn", "goddammit",
     "motherfucker",
-    "jesus",
+    "jesus", "christ",
     "cunt"
 ]
 
@@ -39,14 +39,15 @@ def extract_audio(video_file):
     if audio_info.get("streams") and len(audio_info["streams"]) > 0:
         channels = int(audio_info["streams"][0].get("channels", 2))
     
-    temp_audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    temp_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
     temp_audio.close()
     print(f"Extracting {channels}-channel audio from video...")
     
     subprocess.run([
         "ffmpeg", "-y", "-i", video_file,
         "-vn",  # No video
-        "-acodec", "pcm_s16le",  # Use PCM format (WAV)
+        "-c:a", "aac",  # Use AAC codec
+        "-b:a", "256k",  # High quality bitrate
         "-ar", "44100",  # Standard sample rate
         "-ac", str(channels),  # Preserve original channel count
         temp_audio.name
@@ -109,14 +110,15 @@ def mute_audio(audio_file, filter_string):
     if audio_info.get("streams") and len(audio_info["streams"]) > 0:
         channels = int(audio_info["streams"][0].get("channels", 2))
     
-    temp_muted_audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    temp_muted_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
     temp_muted_audio.close()
     print(f"Applying mute sections to {channels}-channel audio...")
     
     subprocess.run([
         "ffmpeg", "-y", "-i", audio_file,
         "-af", filter_string,
-        "-acodec", "pcm_s16le",
+        "-c:a", "aac",
+        "-b:a", "256k",
         "-ar", "44100",
         "-ac", str(channels),
         temp_muted_audio.name
@@ -125,7 +127,14 @@ def mute_audio(audio_file, filter_string):
     return temp_muted_audio.name
 
 def check_clean_audio(video_file):
-    """Check if the video file has an audio track with title 'Clean'."""
+    """Check if the video file has an audio track with title 'Clean' or a separate clean audio file."""
+    # Check for separate clean audio file
+    base_name = os.path.splitext(video_file)[0]
+    clean_audio_file = f"{base_name}.Clean.m4a"
+    if os.path.exists(clean_audio_file):
+        return True
+
+    # Check for embedded clean audio track
     result = subprocess.run([
         "ffmpeg", "-i", video_file, "-hide_banner"
     ], capture_output=True, text=True)
@@ -205,7 +214,8 @@ def add_audio_to_video(video_file, clean_audio_file, output_file=None):
         "-map", "0",  # Include all original streams
         "-map", "1:a",  # Add clean audio as a new track
         "-c:v", "copy", 
-        "-c:a", "pcm_s16le",  # Use WAV format (PCM)
+        "-c:a", "aac",  # Use AAC codec
+        "-b:a", "256k",  # High quality bitrate
         "-ar", "44100",  # Standard sample rate
         "-ac", str(channels),  # Use original channel count
         "-metadata:s:a:1", "title=Clean",
@@ -343,15 +353,15 @@ def add_clean_subtitles(video_file, clean_subtitle_file, output_file=None):
     print("Clean subtitle track added.")
 
 def save_clean_audio(video_file, clean_audio_file):
-    """Save the cleaned audio as a separate WAV file next to the video."""
+    """Save the cleaned audio as a separate AAC file next to the video."""
     base_name = os.path.splitext(video_file)[0]
-    output_wav = f"{base_name}.Clean.wav"
+    output_aac = f"{base_name}.Clean.m4a"
     
     # Copy the clean audio to the output location
-    with open(clean_audio_file, 'rb') as src, open(output_wav, 'wb') as dst:
+    with open(clean_audio_file, 'rb') as src, open(output_aac, 'wb') as dst:
         dst.write(src.read())
     
-    print(f"Clean audio saved to '{output_wav}'")
+    print(f"Clean audio saved to '{output_aac}'")
 
 # Main Functionality
 def main():
