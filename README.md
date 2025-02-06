@@ -32,18 +32,32 @@ This will:
 2. Transcribe the audio using Whisper
 3. Identify target words
 4. Create a new audio track with those words muted
-5. Add the clean audio track back to the video file
+5. Save the clean audio as a separate WAV file (named `<input_video>.Clean.wav`)
 
 ### Options
 
-- `--force`: Replace existing clean audio track if one exists
+- `--embed-audio`: Embed clean audio track in video instead of saving as separate file
   ```bash
-  python3.9 swears.py video_file.mp4 --force
+  python3.9 swears.py video_file.mp4 --embed-audio
   ```
 
-### Output
+- `--force`: Replace existing clean audio track if one exists (only applies with --embed-audio)
+  ```bash
+  python3.9 swears.py video_file.mp4 --embed-audio --force
+  ```
 
-The script modifies the input video file by adding a new audio track labeled "Clean". The original audio track is preserved. You can switch between the original and clean audio tracks in media players that support multiple audio tracks (like VLC).
+- `--add-clean-subtitles`: Generate clean subtitles and save them as a separate file
+  ```bash
+  python3.9 swears.py video_file.mp4 --add-clean-subtitles
+  ```
+
+### Output Files
+
+By default, the script creates:
+- `<input_video>.Clean.wav`: Clean audio file with profanity muted
+- `<input_video>.Clean.en.srt`: Clean subtitles file (if --add-clean-subtitles is used)
+
+When using --embed-audio, the script modifies the input video file by adding a new audio track labeled "Clean". The original audio track is preserved.
 
 ### Supported Formats
 
