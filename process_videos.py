@@ -23,7 +23,7 @@ def process_video(video_path, args):
     print(f"\nProcessing: {video_path}")
     
     # Build command for swears.py
-    cmd = ["python", "swears.py", video_path]
+    cmd = ["python3", "swears.py", video_path]
     
     # Add optional arguments if specified
     if args.force:
