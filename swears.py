@@ -363,52 +363,70 @@ def save_clean_audio(video_file, clean_audio_file):
     
     print(f"Clean audio saved to '{output_aac}'")
 
+def has_target_words_in_subtitles(subtitle_file, target_words=None):
+    """Check if any target words exist in the subtitle file."""
+    if not subtitle_file:
+        return False
+        
+    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
+    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in words_to_target]
+    
+    with open(subtitle_file, 'r', encoding='utf-8-sig') as f:
+        content = f.read()
+    
+    return any(pattern.search(content) for pattern in regex_patterns)
+
 # Main Functionality
 def main():
     parser = argparse.ArgumentParser(description="Process a video file to mute specific words.")
     parser.add_argument("video_file", help="Path to the input video file")
     parser.add_argument("--force", action="store_true", help="Force replace the 'Clean' audio track.")
     parser.add_argument("--save-filter", action="store_true", help="Save the FFmpeg filter string to a file")
-    parser.add_argument("--add-clean-subtitles", action="store_true", help="Add a clean subtitle track")
+    parser.add_argument("--add-clean-subtitles", action="store_true", 
+                       help="Add a clean subtitle track (default: true)", default=True)
     parser.add_argument("--subtitles-only", action="store_true", help="Only process subtitles, skip audio processing")
     parser.add_argument("--embed-audio", action="store_true", help="Embed clean audio in video instead of saving as separate file")
+    parser.add_argument("--skip-subtitle-check", action="store_true", help="Skip checking subtitles for target words")
     args = parser.parse_args()
-    
-    # Validate that --subtitles-only is only used with --add-clean-subtitles
-    if args.subtitles_only and not args.add_clean_subtitles:
-        parser.error("--subtitles-only can only be used with --add-clean-subtitles")
 
     video_file = args.video_file
     if not os.path.exists(video_file):
         print(f"Error: File '{video_file}' not found.")
         return
 
-    # Process subtitles if flag is set
-    if args.add_clean_subtitles:
-        subtitle_file = extract_subtitles(video_file)
-        if subtitle_file:
-            print("Found subtitle track, creating clean version...")
+    # Always try to process subtitles first
+    subtitle_file = extract_subtitles(video_file)
+    needs_audio_processing = True
+    
+    if subtitle_file and not args.skip_subtitle_check:
+        print("Checking subtitles for target words...")
+        if has_target_words_in_subtitles(subtitle_file):
+            print("Found target words in subtitles, creating clean version...")
             clean_subtitle_file = clean_subtitles(subtitle_file)
             
-            # Save cleaned subtitles to a new file instead of embedding back into video
+            # Save cleaned subtitles
             base_name = os.path.splitext(video_file)[0]
             output_srt = f"{base_name}.Clean.en.srt"
-            
-            # Copy the file contents instead of trying to move across devices
             with open(clean_subtitle_file, 'rb') as src, open(output_srt, 'wb') as dst:
                 dst.write(src.read())
-            
             print(f"Clean subtitles saved to '{output_srt}'")
             
             os.unlink(subtitle_file)
             os.unlink(clean_subtitle_file)
         else:
-            print("No subtitle track found to process.")
-
-        if args.subtitles_only:
+            print("No target words found in subtitles, skipping audio processing.")
+            needs_audio_processing = False
+            os.unlink(subtitle_file)
             return
+    else:
+        if subtitle_file:
+            os.unlink(subtitle_file)
+        print("No subtitle track found, proceeding with audio processing.")
 
-    # Continue with audio processing
+    if args.subtitles_only or not needs_audio_processing:
+        return
+
+    # Rest of the audio processing code remains the same
     if check_clean_audio(video_file):
         if not args.force:
             print("'Clean' audio track already exists. Use --force to replace it.")
