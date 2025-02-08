@@ -393,6 +393,12 @@ def main():
     if not os.path.exists(video_file):
         print(f"Error: File '{video_file}' not found.")
         return
+    
+        # Rest of the audio processing code remains the same
+    if check_clean_audio(video_file):
+        if not args.force:
+            print("'Clean' audio track already exists. Use --force to replace it.")
+            return
 
     # Always try to process subtitles first
     subtitle_file = extract_subtitles(video_file)
@@ -425,12 +431,6 @@ def main():
 
     if args.subtitles_only or not needs_audio_processing:
         return
-
-    # Rest of the audio processing code remains the same
-    if check_clean_audio(video_file):
-        if not args.force:
-            print("'Clean' audio track already exists. Use --force to replace it.")
-            return
 
     base_name = os.path.splitext(os.path.basename(video_file))[0]
     output_dir = os.path.dirname(video_file)
