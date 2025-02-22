@@ -56,16 +56,14 @@ def extract_audio(video_file):
 
 def transcribe_audio(audio_file, transcription_file):
     """Transcribe the audio and save the transcription."""
-    if not os.path.exists(transcription_file):
-        print("Loading Whisper model...")
-        model = whisper.load_model("base.en")
-        print("Transcribing audio...")
-        result = model.transcribe(audio_file, word_timestamps=True, verbose=True)
-        with open(transcription_file, "w") as f:
-            json.dump(result, f, indent=4)
-        print(f"Transcription saved to '{transcription_file}'")
-    else:
-        print("Transcription already exists. Skipping.")
+    print("Loading Whisper model...")
+    model = whisper.load_model("base.en")
+    print("Transcribing audio...")
+    result = model.transcribe(audio_file, word_timestamps=True, verbose=True)
+    with open(transcription_file, "w") as f:
+        json.dump(result, f, indent=4)
+    print(f"Transcription saved to '{transcription_file}'")
+    
 
 def generate_filter(transcription_file, buffer=0.1, target_words=None):
     """Generate FFmpeg filter string to mute specific sections."""
@@ -394,12 +392,19 @@ def main():
         print(f"Error: File '{video_file}' not found.")
         return
     
-        # Rest of the audio processing code remains the same
+    # Rest of the audio processing code remains the same
     if check_clean_audio(video_file):
         if not args.force:
             print("'Clean' audio track already exists. Use --force to replace it.")
             return
+        
+    base_name = os.path.splitext(os.path.basename(video_file))[0]
+    output_dir = os.path.dirname(video_file)
+    transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
 
+    if os.path.exists(transcription_file) and not args.force:
+        print("Transcription already exists. Skipping.")
+        return
     # Always try to process subtitles first
     subtitle_file = extract_subtitles(video_file)
     needs_audio_processing = True
@@ -432,14 +437,10 @@ def main():
     if args.subtitles_only or not needs_audio_processing:
         return
 
-    base_name = os.path.splitext(os.path.basename(video_file))[0]
-    output_dir = os.path.dirname(video_file)
-    transcription_file = os.path.join(output_dir, f"{base_name}_transcription.json")
-
     # Rest of audio processing steps
     extracted_audio = extract_audio(video_file)
-    transcribe_audio(extracted_audio, transcription_file)
-    
+    transcribe_audio(extracted_audio, transcription_file)       
+
     filter_string = generate_filter(transcription_file)
     if not filter_string:
         print("No sections to mute. Exiting.")
