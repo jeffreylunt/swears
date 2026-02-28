@@ -22,6 +22,26 @@ DEFAULT_TARGET_WORDS = [
     "cunt"
 ]
 
+# Words that must match as exact whole words only (no prefix matching).
+# e.g. "christ" matches "Christ" but NOT "Christine", "Christian", "Christopher".
+EXACT_MATCH_WORDS = {"jesus", "christ"}
+
+
+def build_regex_patterns(target_words=None):
+    """Build compiled regex patterns for target words.
+
+    Words in EXACT_MATCH_WORDS use \\bword\\b (exact match only).
+    All other words use \\bword\\w*\\b (prefix matching, e.g. fuck -> fucking).
+    """
+    words = target_words if target_words is not None else DEFAULT_TARGET_WORDS
+    patterns = []
+    for word in words:
+        if word.lower() in EXACT_MATCH_WORDS:
+            patterns.append(re.compile(rf"\b{word}\b", re.IGNORECASE))
+        else:
+            patterns.append(re.compile(rf"\b{word}\w*\b", re.IGNORECASE))
+    return patterns
+
 # Functions
 def extract_audio(video_file):
     """Extract audio from the video file and return the temporary audio file path."""
@@ -71,8 +91,7 @@ def generate_filter(transcription_file, buffer=0.1, target_words=None):
     with open(transcription_file, "r") as f:
         transcription = json.load(f)
 
-    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
-    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in words_to_target]
+    regex_patterns = build_regex_patterns(target_words)
     filter_parts = []
 
     for segment in transcription.get("segments", []):
@@ -248,8 +267,7 @@ def add_audio_to_video(video_file, clean_audio_file, output_file=None):
 
 def clean_subtitle_text(text, target_words=None):
     """Replace target words in subtitle text with underscores."""
-    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
-    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in words_to_target]
+    regex_patterns = build_regex_patterns(target_words)
 
     cleaned_text = text
     for pattern in regex_patterns:
@@ -427,8 +445,7 @@ def has_target_words_in_subtitles(subtitle_file, target_words=None):
     if not subtitle_file:
         return False
 
-    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
-    regex_patterns = [re.compile(rf"\b{word}\w*\b", re.IGNORECASE) for word in words_to_target]
+    regex_patterns = build_regex_patterns(target_words)
 
     with open(subtitle_file, 'r', encoding='utf-8-sig') as f:
         content = f.read()
@@ -504,7 +521,8 @@ def find_flagged_srt_segments(srt_segments, target_words=None):
     Returns list of dicts with keys: start, end, text, matched_words
     """
     words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
-    regex_patterns = [(w, re.compile(rf"\b{w}\w*\b", re.IGNORECASE)) for w in words_to_target]
+    all_patterns = build_regex_patterns(target_words)
+    regex_patterns = list(zip(words_to_target, all_patterns))
 
     flagged = []
     for seg in srt_segments:
@@ -576,8 +594,7 @@ def targeted_transcription(video_file, subtitle_file, full_audio_file, transcrip
     Returns list of mute windows (dicts with 'start', 'end', 'source' keys).
     Also saves transcription data to transcription_file.
     """
-    words_to_target = target_words if target_words is not None else DEFAULT_TARGET_WORDS
-    regex_patterns = [re.compile(rf"\b{w}\w*\b", re.IGNORECASE) for w in words_to_target]
+    regex_patterns = build_regex_patterns(target_words)
 
     # Parse SRT and find flagged segments
     srt_segments = parse_srt(subtitle_file)
