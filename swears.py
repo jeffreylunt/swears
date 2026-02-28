@@ -238,24 +238,66 @@ def clean_subtitle_text(text, target_words=None):
     return cleaned_text
 
 def extract_subtitles(video_file):
-    """Extract subtitles from video file if they exist."""
+    """Extract subtitles from video file if they exist.
+    
+    Uses ffprobe to find the best English subtitle track, preferring
+    non-forced, non-SDH tracks. Falls back to first subtitle track
+    if no English tracks are found.
+    """
     temp_subs = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
     temp_subs.close()
     
-    # Try to extract English subtitles
-    result = subprocess.run([
-        "ffmpeg", "-y", "-i", video_file,
-        "-map", "0:s:m:language:eng",  # Try to get English subtitles
-        temp_subs.name
-    ], capture_output=True)
+    # Use ffprobe to find the best English subtitle track
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-select_streams", "s",
+        video_file
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
     
-    if os.path.getsize(temp_subs.name) == 0:
-        # If no English subtitles found, try first subtitle track
+    best_track = None
+    try:
+        streams = json.loads(probe_result.stdout).get("streams", [])
+        eng_tracks = [s for s in streams if s.get("tags", {}).get("language") == "eng"]
+        
+        if eng_tracks:
+            # Prefer non-forced, non-SDH English track (the full dialogue track)
+            for track in eng_tracks:
+                title = (track.get("tags", {}).get("title") or "").lower()
+                is_forced = track.get("disposition", {}).get("forced", 0) == 1 or "forced" in title
+                is_sdh = "sdh" in title
+                if not is_forced and not is_sdh:
+                    best_track = track["index"]
+                    break
+            # Fall back to any non-forced English track (including SDH)
+            if best_track is None:
+                for track in eng_tracks:
+                    title = (track.get("tags", {}).get("title") or "").lower()
+                    is_forced = track.get("disposition", {}).get("forced", 0) == 1 or "forced" in title
+                    if not is_forced:
+                        best_track = track["index"]
+                        break
+            # Last resort among English tracks: first one
+            if best_track is None:
+                best_track = eng_tracks[0]["index"]
+    except (json.JSONDecodeError, KeyError):
+        pass
+    
+    if best_track is not None:
+        # Extract the specific track by absolute stream index
+        print(f"Extracting subtitle track index {best_track}")
         subprocess.run([
             "ffmpeg", "-y", "-i", video_file,
-            "-map", "0:s:0",  # Get first subtitle track
+            "-map", f"0:{best_track}",
             temp_subs.name
-        ])
+        ], capture_output=True)
+    else:
+        # No English tracks found via probe, try first subtitle track
+        subprocess.run([
+            "ffmpeg", "-y", "-i", video_file,
+            "-map", "0:s:0",
+            temp_subs.name
+        ], capture_output=True)
     
     if os.path.getsize(temp_subs.name) == 0:
         os.unlink(temp_subs.name)
