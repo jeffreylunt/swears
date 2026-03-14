@@ -43,28 +43,62 @@ def build_regex_patterns(target_words=None):
     return patterns
 
 # Functions
-def extract_audio(video_file):
-    """Extract audio from the video file and return the temporary audio file path."""
-    # First, probe the input file to get audio channel information
+def find_english_audio_stream(video_file):
+    """Find the best English audio stream index in a video file.
+
+    Returns the relative audio stream index (e.g., 0 for first audio, 1 for second)
+    for use with ffmpeg's -map 0:a:N selector. Defaults to 0 if no English track found.
+    """
     probe_cmd = [
         "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_streams", "-select_streams", "a:0",
+        "-show_streams", "-select_streams", "a",
+        video_file
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+
+    try:
+        streams = json.loads(probe_result.stdout).get("streams", [])
+    except (json.JSONDecodeError, KeyError):
+        return 0
+
+    # Look for English audio tracks
+    for i, stream in enumerate(streams):
+        lang = stream.get("tags", {}).get("language", "").lower()
+        if lang == "eng":
+            print(f"Found English audio track at audio stream index {i} (absolute index {stream['index']})")
+            return i
+
+    # No English track found, default to first audio stream
+    print("No English audio track found, using first audio stream")
+    return 0
+
+
+def extract_audio(video_file):
+    """Extract audio from the video file and return the temporary audio file path."""
+    # Find the English audio stream
+    audio_stream_idx = find_english_audio_stream(video_file)
+
+    # Probe the selected audio stream for channel information
+    probe_cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-select_streams", f"a:{audio_stream_idx}",
         video_file
     ]
     probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
     audio_info = json.loads(probe_result.stdout)
 
-    # Get number of channels from first audio stream, default to 2 if not found
+    # Get number of channels from selected audio stream, default to 2 if not found
     channels = 2
     if audio_info.get("streams") and len(audio_info["streams"]) > 0:
         channels = int(audio_info["streams"][0].get("channels", 2))
 
     temp_audio = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
     temp_audio.close()
-    print(f"Extracting {channels}-channel audio from video...")
+    print(f"Extracting {channels}-channel audio from video (audio stream {audio_stream_idx})...")
 
     subprocess.run([
         "ffmpeg", "-y", "-i", video_file,
+        "-map", f"0:a:{audio_stream_idx}",  # Select the English audio stream
         "-vn",  # No video
         "-c:a", "aac",  # Use AAC codec
         "-b:a", "256k",  # High quality bitrate
